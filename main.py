@@ -103,11 +103,15 @@ def generate_image(prompt):
     try:
         encoded_prompt = urllib.parse.quote(prompt)
         image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=630&nologo=true"
+        print(f"이미지 URL: {image_url}")
         
         # 이미지 생성 대기
-        response = requests.get(image_url, timeout=60)
+        time.sleep(5)
+        response = requests.get(image_url, timeout=120)
+        print(f"이미지 응답 코드: {response.status_code}")
+        
         if response.status_code == 200:
-            return image_url
+            return response.content
         else:
             print(f"[ERROR] 이미지 생성 실패: {response.status_code}")
             return None
@@ -115,32 +119,33 @@ def generate_image(prompt):
         print(f"[ERROR] 이미지 생성 실패: {e}")
         return None
 
-def upload_image_to_wordpress(image_url, filename):
+def upload_image_to_wordpress(image_data, filename):
     try:
-        # 이미지 다운로드
-        response = requests.get(image_url, timeout=60)
-        if response.status_code != 200:
-            print(f"[ERROR] 이미지 다운로드 실패")
-            return None
-        
         # 워드프레스에 업로드
         media_endpoint = f"{WP_URL}/wp-json/wp/v2/media"
         headers = {
             "Content-Disposition": f'attachment; filename="{filename}.jpg"',
             "Content-Type": "image/jpeg"
         }
+        print(f"업로드 엔드포인트: {media_endpoint}")
+        
         upload_response = requests.post(
             media_endpoint,
             headers=headers,
-            data=response.content,
+            data=image_data,
             auth=(WP_USER, WP_APP_PASSWORD)
         )
         
+        print(f"업로드 응답 코드: {upload_response.status_code}")
+        
         if upload_response.status_code == 201:
             media_data = upload_response.json()
-            return media_data.get("id"), media_data.get("source_url")
+            media_id = media_data.get("id")
+            source_url = media_data.get("source_url")
+            print(f"업로드 성공! ID: {media_id}, URL: {source_url}")
+            return media_id, source_url
         else:
-            print(f"[ERROR] 이미지 업로드 실패: {upload_response.status_code}")
+            print(f"[ERROR] 이미지 업로드 실패: {upload_response.status_code} - {upload_response.text}")
             return None, None
     except Exception as e:
         print(f"[ERROR] 이미지 업로드 실패: {e}")
@@ -157,6 +162,9 @@ def post_to_wordpress(title, content, image_id):
     
     if image_id:
         post_data["featured_media"] = image_id
+        print(f"대표 이미지 ID 설정: {image_id}")
+    else:
+        print("대표 이미지 없음")
     
     response = requests.post(
         endpoint,
@@ -188,18 +196,20 @@ def main():
     print(f"이미지 프롬프트: {image_prompt}")
     
     print("[4/5] AI 이미지 생성 및 업로드 중...")
-    image_url = generate_image(image_prompt)
+    image_data = generate_image(image_prompt)
     image_id = None
     image_source_url = None
     
-    if image_url:
+    if image_data:
+        print(f"이미지 데이터 크기: {len(image_data)} bytes")
         kst = pytz.timezone('Asia/Seoul')
         timestamp = datetime.now(kst).strftime("%Y%m%d%H%M%S")
-        result = upload_image_to_wordpress(image_url, f"health_{timestamp}")
-        if result:
-            image_id, image_source_url = result
-            if image_source_url:
-                content = f'<img src="{image_source_url}" alt="{title}" />\n\n{content}'
+        image_id, image_source_url = upload_image_to_wordpress(image_data, f"health_{timestamp}")
+        
+        if image_source_url:
+            content = f'<img src="{image_source_url}" alt="{title}" />\n\n{content}'
+    else:
+        print("이미지 생성 실패 - 이미지 없이 발행")
     
     print("[5/5] WordPress 발행 중...")
     post_to_wordpress(title, content, image_id)
