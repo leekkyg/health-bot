@@ -20,3 +20,6 @@ jobs:
           WP_URL: ${{ secrets.WP_URL }}
           WP_USER: ${{ secrets.WP_USER }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          # 아래 두 줄을 추가했습니다.
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
