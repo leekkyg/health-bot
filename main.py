@@ -12,6 +12,8 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 WP_URL = os.environ.get("WP_URL")
 WP_USER = os.environ.get("WP_USER")
 WP_APP_PASSWORD = os.environ.get("WP_APP_PASSWORD")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 # 건강정보 RSS 피드
 RSS_FEEDS = [
@@ -105,7 +107,6 @@ def generate_image(prompt):
         image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=630&nologo=true"
         print(f"이미지 URL: {image_url}")
         
-        # 이미지 생성 대기
         time.sleep(5)
         response = requests.get(image_url, timeout=120)
         print(f"이미지 응답 코드: {response.status_code}")
@@ -121,7 +122,6 @@ def generate_image(prompt):
 
 def upload_image_to_wordpress(image_data, filename):
     try:
-        # 워드프레스에 업로드
         media_endpoint = f"{WP_URL}/wp-json/wp/v2/media"
         headers = {
             "Content-Disposition": f'attachment; filename="{filename}.jpg"',
@@ -151,6 +151,26 @@ def upload_image_to_wordpress(image_data, filename):
         print(f"[ERROR] 이미지 업로드 실패: {e}")
         return None, None
 
+def send_telegram(title, url):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("[SKIP] 텔레그램 설정 없음")
+        return
+    
+    message = f"💊 새 건강정보 발행!\n\n{title}\n\n{url}"
+    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    
+    try:
+        response = requests.post(telegram_url, data={
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message
+        })
+        if response.status_code == 200:
+            print("[SUCCESS] 텔레그램 알림 전송 완료")
+        else:
+            print(f"[ERROR] 텔레그램 알림 실패: {response.text}")
+    except Exception as e:
+        print(f"[ERROR] 텔레그램 알림 실패: {e}")
+
 def post_to_wordpress(title, content, image_id):
     endpoint = f"{WP_URL}/wp-json/wp/v2/posts"
     post_data = {
@@ -173,9 +193,13 @@ def post_to_wordpress(title, content, image_id):
         headers={"Content-Type": "application/json"}
     )
     if response.status_code == 201:
-        print(f"[SUCCESS] 발행 완료: {response.json().get('link')}")
+        post_url = response.json().get('link')
+        print(f"[SUCCESS] 발행 완료: {post_url}")
+        send_telegram(title, post_url)
+        return post_url
     else:
         print(f"[ERROR] 발행 실패: {response.status_code} - {response.text}")
+        return None
 
 def main():
     print("=== 건강정보 자동 발행 시작 ===")
